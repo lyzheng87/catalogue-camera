@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MASTER = Path.home() / "Documents" / "Catalogue" / "master.json"
+DEFAULT_MASTER = Path(__file__).resolve().parent.parent / "Catalogue" / "master.json"
 VIEW_LABELS = ["First View", "Second View", "Third View"]
 UNGROUPED = "Ungrouped"
 
