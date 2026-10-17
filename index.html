@@ -49,7 +49,7 @@
   .link-btn { background: none; color: var(--accent); padding: 6px 4px; }
   .search { margin: 12px 16px 0; }
   .search input { width: 100%; }
-  input[type=text] {
+  input[type=text], select {
     font-size: 16px; padding: 10px 12px; border-radius: 10px;
     border: 1px solid var(--line); background: var(--card); color: var(--text);
   }
@@ -98,7 +98,7 @@
   .sheet h2 { margin: 0 0 12px; font-size: 18px; text-align: center; }
   .field { display: block; margin-bottom: 10px; }
   .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-  .field input { width: 100%; }
+  .field input, .field select { width: 100%; }
   .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
   .slot { position: relative; background: none; padding: 0; color: var(--muted); font-size: 12px; text-align: center; }
   .slot .thumb { border: 2px dashed var(--line); }
@@ -119,6 +119,7 @@
   }
   .menu-list { border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
   .menu-list button:first-child { border-top: 0; }
+  .menu-list button.danger { color: var(--danger); }
   .viewer { position: fixed; inset: 0; z-index: 30; background: #000; display: none; align-items: center; justify-content: center; }
   .viewer.open { display: flex; }
   .viewer img { max-width: 100%; max-height: 100%; }
@@ -147,12 +148,12 @@
 <div class="overlay" id="formOverlay">
   <form class="sheet" id="itemForm" autocomplete="off">
     <h2 id="formTitle">New Item</h2>
+    <label class="field"><span>Group</span><select id="groupSelect"></select></label>
+    <label class="field hidden" id="newGroupField"><span>New Group Name</span><input type="text" name="group"></label>
     <label class="field"><span>Part Number *</span><input type="text" name="partNo" required autocapitalize="characters"></label>
     <label class="field"><span>Name *</span><input type="text" name="name" required></label>
     <label class="field"><span>Brand</span><input type="text" name="brand" list="brandList"></label>
-    <label class="field"><span>Group</span><input type="text" name="group" list="groupList"></label>
     <datalist id="brandList"></datalist>
-    <datalist id="groupList"></datalist>
     <div class="slots" id="slots"></div>
     <div class="row">
       <button type="button" class="btn secondary" id="cancelBtn">Cancel</button>
@@ -169,6 +170,7 @@
       <button id="exportHtmlBtn">Export HTML Catalogue</button>
       <button id="exportJsonBtn">Export JSON Backup</button>
       <button id="importJsonBtn">Import JSON Backup</button>
+      <button id="deleteAllBtn" class="danger">Delete All Items</button>
     </div>
     <button class="btn secondary" style="width:100%" id="menuCloseBtn">Close</button>
   </div>
@@ -185,6 +187,8 @@ const VIEW_LABELS = ["First View", "Second View", "Third View"];
 const MAX_PHOTOS = 3;
 const MAX_IMAGE_SIZE = 1600;
 const UNGROUPED = "Ungrouped";
+const NEW_GROUP = "__new__";
+const LAST_GROUP_KEY = "lastGroup";
 
 const $ = (id) => document.getElementById(id);
 
@@ -208,6 +212,7 @@ const db = (() => {
     all: () => run("readonly", (store) => store.getAll()),
     put: (item) => run("readwrite", (store) => store.put(item)),
     remove: (id) => run("readwrite", (store) => store.delete(id)),
+    clear: () => run("readwrite", (store) => store.clear()),
   };
 })();
 
@@ -299,8 +304,20 @@ function refreshDatalists() {
     $(id).innerHTML = [...new Set(values.filter(Boolean))].sort()
       .map((value) => `<option value="${escapeHtml(value)}">`).join("");
   };
-  fill("groupList", items.map((item) => item.group));
   fill("brandList", items.map((item) => item.brand));
+}
+
+function renderGroupSelect(selected) {
+  const groups = [...new Set([...items.map((item) => item.group), selected].filter(Boolean))].sort();
+  const select = $("groupSelect");
+  select.innerHTML = [
+    `<option value="">— No Group —</option>`,
+    ...groups.map((group) => `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`),
+    `<option value="${NEW_GROUP}">+ New Group…</option>`,
+  ].join("");
+  select.value = selected;
+  $("itemForm").elements.group.value = selected;
+  $("newGroupField").classList.add("hidden");
 }
 
 async function loadItems() {
@@ -326,9 +343,10 @@ function renderSlots() {
 function openForm(item) {
   draft = item
     ? { ...item, photos: [...item.photos] }
-    : { id: crypto.randomUUID(), partNo: "", name: "", brand: "", group: "", photos: [null, null, null], createdAt: Date.now() };
+    : { id: crypto.randomUUID(), partNo: "", name: "", brand: "", group: localStorage.getItem(LAST_GROUP_KEY) ?? "", photos: [null, null, null], createdAt: Date.now() };
   const form = $("itemForm");
-  for (const field of ["partNo", "name", "brand", "group"]) form.elements[field].value = draft[field];
+  for (const field of ["partNo", "name", "brand"]) form.elements[field].value = draft[field];
+  renderGroupSelect(draft.group);
   $("formTitle").textContent = item ? "Edit Item" : "New Item";
   $("deleteBtn").classList.toggle("hidden", !item);
   renderSlots();
@@ -482,6 +500,14 @@ $("newBtn").addEventListener("click", () => openForm(null));
 $("cancelBtn").addEventListener("click", closeForm);
 $("search").addEventListener("input", renderList);
 
+$("groupSelect").addEventListener("change", (event) => {
+  const isNew = event.target.value === NEW_GROUP;
+  const input = $("itemForm").elements.group;
+  input.value = isNew ? "" : event.target.value;
+  $("newGroupField").classList.toggle("hidden", !isNew);
+  if (isNew) input.focus();
+});
+
 $("cameraBtn").addEventListener("click", () => {
   const nextSlot = draft.photos.findIndex((photo) => !photo);
   if (nextSlot !== -1) openCamera(nextSlot);
@@ -512,6 +538,7 @@ $("itemForm").addEventListener("submit", async (event) => {
   readFormFields();
   draft.updatedAt = Date.now();
   await db.put(draft);
+  localStorage.setItem(LAST_GROUP_KEY, draft.group);
   closeForm();
   await loadItems();
   showToast("Saved");
@@ -556,6 +583,19 @@ $("menuOverlay").addEventListener("click", (event) => { if (event.target.id === 
 $("exportHtmlBtn").addEventListener("click", () => runMenuAction(exportHtml, "Preparing HTML…"));
 $("exportJsonBtn").addEventListener("click", () => runMenuAction(exportJson, "Preparing backup…"));
 $("importJsonBtn").addEventListener("click", () => { closeMenu(); $("importInput").click(); });
+
+$("deleteAllBtn").addEventListener("click", async () => {
+  closeMenu();
+  if (!items.length) {
+    showToast("Nothing to delete");
+    return;
+  }
+  if (!confirm(`Delete all ${items.length} items? Export a JSON backup first if you need it.`)) return;
+  if (!confirm("This cannot be undone. Really delete everything?")) return;
+  await db.clear();
+  await loadItems();
+  showToast("All items deleted");
+});
 
 $("importInput").addEventListener("change", async (event) => {
   const file = event.target.files[0];
