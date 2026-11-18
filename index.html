@@ -70,14 +70,15 @@
   .item-info dt { color: var(--muted); }
   .item-info dd { margin: 0; word-break: break-word; }
   .item-info dd.pn { font-weight: 600; }
-  .views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .views { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
   .view { text-align: center; font-size: 11px; color: var(--muted); }
   .thumb {
     width: 100%; aspect-ratio: 1; border-radius: 8px; background: var(--slot);
     object-fit: cover; display: flex; align-items: center; justify-content: center;
     color: var(--muted); font-size: 20px; margin-bottom: 3px;
   }
-  .item-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+  .item-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+  .edit-btn { background: var(--slot); color: var(--accent); font-weight: 600; padding: 8px 18px; border-radius: 16px; }
   .empty { text-align: center; color: var(--muted); padding: 60px 24px; }
   .fab {
     position: fixed; left: 50%; transform: translateX(-50%);
@@ -99,7 +100,7 @@
   .field { display: block; margin-bottom: 10px; }
   .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   .field input, .field select { width: 100%; }
-  .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+  .slots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 14px 0; }
   .slot { position: relative; background: none; padding: 0; color: var(--muted); font-size: 12px; text-align: center; }
   .slot .thumb { border: 2px dashed var(--line); }
   .slot img.thumb { border: 0; }
@@ -183,8 +184,8 @@
 <input type="file" id="importInput" accept="application/json,.json" class="hidden">
 
 <script>
-const VIEW_LABELS = ["First View", "Second View", "Third View"];
-const MAX_PHOTOS = 3;
+const VIEW_LABELS = ["First View", "Second View", "Third View", "Fourth View"];
+const MAX_PHOTOS = VIEW_LABELS.length;
 const MAX_IMAGE_SIZE = 1600;
 const UNGROUPED = "Ungrouped";
 const NEW_GROUP = "__new__";
@@ -293,7 +294,7 @@ function renderList() {
                 return `<div class="view">${thumb}${label}</div>`;
               }).join("")}
             </div>
-            <div class="item-actions"><button class="link-btn" data-edit="${item.id}">Edit</button></div>
+            <div class="item-actions"><button class="edit-btn" data-edit="${item.id}">✏️ Edit</button></div>
           </div>`).join("")}
       </div>
     </section>`).join("");
@@ -321,7 +322,10 @@ function renderGroupSelect(selected) {
 }
 
 async function loadItems() {
-  items = await db.all();
+  items = (await db.all()).map((item) => ({
+    ...item,
+    photos: Array.from({ length: MAX_PHOTOS }, (_, index) => item.photos?.[index] ?? null),
+  }));
   refreshDatalists();
   renderList();
 }
@@ -337,13 +341,13 @@ function renderSlots() {
   const nextSlot = draft.photos.findIndex((photo) => !photo);
   const camera = $("cameraBtn");
   camera.disabled = nextSlot === -1;
-  camera.textContent = nextSlot === -1 ? "3/3 ✓" : `📷 ${nextSlot + 1}/${MAX_PHOTOS}`;
+  camera.textContent = nextSlot === -1 ? `${MAX_PHOTOS}/${MAX_PHOTOS} ✓` : `📷 ${nextSlot + 1}/${MAX_PHOTOS}`;
 }
 
 function openForm(item) {
   draft = item
     ? { ...item, photos: [...item.photos] }
-    : { id: crypto.randomUUID(), partNo: "", name: "", brand: "", group: localStorage.getItem(LAST_GROUP_KEY) ?? "", photos: [null, null, null], createdAt: Date.now() };
+    : { id: crypto.randomUUID(), partNo: "", name: "", brand: "", group: localStorage.getItem(LAST_GROUP_KEY) ?? "", photos: Array(MAX_PHOTOS).fill(null), createdAt: Date.now() };
   const form = $("itemForm");
   for (const field of ["partNo", "name", "brand"]) form.elements[field].value = draft[field];
   renderGroupSelect(draft.group);

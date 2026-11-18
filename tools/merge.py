@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_MASTER = Path(__file__).resolve().parent.parent / "Catalogue" / "master.json"
-VIEW_LABELS = ["First View", "Second View", "Third View"]
+VIEW_LABELS = ["First View", "Second View", "Third View", "Fourth View"]
 UNGROUPED = "Ungrouped"
 
 Item = dict[str, Any]
@@ -81,7 +81,10 @@ def build_html(items: list[Item]) -> str:
         rows = "\n".join(
             f"<tr><td><b>{esc(item['partNo'])}</b></td><td>{esc(item.get('name'))}</td>"
             f"<td>{esc(item.get('brand'))}</td>"
-            + "".join(photo_cell(photo) for photo in (item.get("photos") or [])[: len(VIEW_LABELS)])
+            + "".join(
+                photo_cell(photo)
+                for photo in ((item.get("photos") or []) + [None] * len(VIEW_LABELS))[: len(VIEW_LABELS)]
+            )
             + "</tr>"
             for item in group
         )
