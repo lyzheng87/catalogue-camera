@@ -1,20 +1,32 @@
-"""Merge a Catalogue Camera JSON export into a master file and build an HTML catalogue.
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["openpyxl", "pillow"]
+# ///
+"""Merge a Catalogue Camera JSON export into a master file and build HTML and Excel catalogues.
 
 Usage: uv run tools/merge.py <export.json> [--master PATH]
 """
 
 import argparse
+import base64
 import html
 import json
 import re
 import shutil
 from collections import defaultdict
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XlImage
+from openpyxl.styles import Alignment, Font
+from PIL import Image
+
 DEFAULT_MASTER = Path(__file__).resolve().parent.parent / "Catalogue" / "master.json"
-VIEW_LABELS = ["First View", "Second View", "Third View", "Fourth View"]
+VIEW_LABELS = ["First View", "Second View", "Third View", "Fourth View", "Fifth View"]
+XLSX_THUMB_PX = 120
 UNGROUPED = "Ungrouped"
 
 Item = dict[str, Any]
@@ -73,6 +85,47 @@ def photo_cell(photo: str | None) -> str:
     return f'<td class="img"><a href="{photo}" target="_blank"><img src="{photo}" alt=""></a></td>'
 
 
+def padded_photos(item: Item) -> list[str | None]:
+    return ((item.get("photos") or []) + [None] * len(VIEW_LABELS))[: len(VIEW_LABELS)]
+
+
+def thumbnail(data_url: str) -> BytesIO:
+    image = Image.open(BytesIO(base64.b64decode(data_url.split(",", 1)[1])))
+    image.thumbnail((XLSX_THUMB_PX, XLSX_THUMB_PX))
+    buffer = BytesIO()
+    image.convert("RGB").save(buffer, format="JPEG", quality=80)
+    buffer.seek(0)
+    return buffer
+
+
+def build_xlsx(items: list[Item], path: Path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Catalogue"
+    sheet.append(["Group", "Part No.", "Name", "Brand", *VIEW_LABELS])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+    sheet.freeze_panes = "A2"
+    for column, width in zip("ABCD", (16, 18, 28, 16)):
+        sheet.column_dimensions[column].width = width
+    photo_columns = [chr(ord("E") + index) for index in range(len(VIEW_LABELS))]
+    for column in photo_columns:
+        sheet.column_dimensions[column].width = XLSX_THUMB_PX / 7 + 2
+
+    row = 2
+    for group_name, group in group_items(items):
+        for item in group:
+            sheet.append([group_name, item["partNo"], item.get("name"), item.get("brand")])
+            sheet.row_dimensions[row].height = XLSX_THUMB_PX * 0.75 + 6
+            for cell in sheet[row]:
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+            for column, photo in zip(photo_columns, padded_photos(item)):
+                if photo:
+                    sheet.add_image(XlImage(thumbnail(photo)), f"{column}{row}")
+            row += 1
+    workbook.save(path)
+
+
 def build_html(items: list[Item]) -> str:
     esc = lambda value: html.escape(value or "")
     header = "".join(f"<th>{label}</th>" for label in VIEW_LABELS)
@@ -83,7 +136,7 @@ def build_html(items: list[Item]) -> str:
             f"<td>{esc(item.get('brand'))}</td>"
             + "".join(
                 photo_cell(photo)
-                for photo in ((item.get("photos") or []) + [None] * len(VIEW_LABELS))[: len(VIEW_LABELS)]
+                for photo in padded_photos(item)
             )
             + "</tr>"
             for item in group
@@ -132,9 +185,13 @@ def main() -> None:
     html_path = master_path.with_name("catalogue.html")
     html_path.write_text(build_html(merged), encoding="utf-8")
 
+    xlsx_path = master_path.with_name("catalogue.xlsx")
+    build_xlsx(merged, xlsx_path)
+
     print(f"Added {added}, updated {updated}, total {len(merged)} items")
     print(f"Master: {master_path}")
     print(f"HTML:   {html_path}")
+    print(f"Excel:  {xlsx_path}")
     duplicates = duplicate_part_numbers(merged)
     if duplicates:
         print(f"⚠️  Duplicate Part No. (different entries): {', '.join(duplicates)}")
