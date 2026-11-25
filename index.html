@@ -421,8 +421,10 @@ async function shareOrDownload(content, filename, mimeType) {
   setTimeout(() => URL.revokeObjectURL(link.href), 10000);
 }
 
-function todayStamp() {
-  return new Date().toISOString().slice(0, 10);
+function timestamp() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 }
 
 async function itemsWithDataUrls() {
@@ -434,7 +436,7 @@ async function itemsWithDataUrls() {
 
 async function exportJson() {
   const payload = { app: "catalogue-camera", version: 1, exportedAt: new Date().toISOString(), items: await itemsWithDataUrls() };
-  await shareOrDownload(JSON.stringify(payload), `catalogue-backup-${todayStamp()}.json`, "application/json");
+  await shareOrDownload(JSON.stringify(payload), `catalogue-backup-${timestamp()}.json`, "application/json");
 }
 
 async function importJson(file) {
@@ -466,7 +468,7 @@ ${item.photos.map((photo) => `<td class="img">${photo ? `<a href="${photo}" targ
 
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Catalogue ${todayStamp()}</title>
+<title>Catalogue ${timestamp()}</title>
 <style>
 body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:24px;color:#1c1c1e}
 h1{margin:0 0 4px}h2{margin:28px 0 8px;border-bottom:2px solid #007aff;padding-bottom:4px}
@@ -481,7 +483,7 @@ td.img img{width:120px;height:120px;object-fit:cover;border-radius:6px;display:b
 <h1>Catalogue</h1><p style="color:#8e8e93">Exported ${new Date().toLocaleString()} · ${exportItems.length} items</p>
 ${sections}
 </body></html>`;
-  await shareOrDownload(html, `catalogue-${todayStamp()}.html`, "text/html");
+  await shareOrDownload(html, `catalogue-${timestamp()}.html`, "text/html");
 }
 
 function closeMenu() {
